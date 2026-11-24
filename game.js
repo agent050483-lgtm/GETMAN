@@ -754,9 +754,12 @@ const COSSACK_PLAT_CATALOG = [
     { key: 'cossack_plat_isl_4',  natW: 466,  natH: 297, walkRatio: 0.185 }
 ];
 
+// Рівномірне масштабування платформ (1.35x) для просторіших ярусів
+const PLATFORM_SCALE = 1.35;
+
 function buildLevelPlatforms(lvl, groundY) {
     if (lvl.era !== 0) {
-        return [
+        const rawPlats = [
             { x: 340,  y: groundY - 165, w: 260, h: 18 },
             { x: 860,  y: groundY - 165, w: 300, h: 18 },
             { x: 1520, y: groundY - 165, w: 280, h: 18 },
@@ -772,6 +775,12 @@ function buildLevelPlatforms(lvl, groundY) {
             { x: 1060, y: groundY - 660, w: 340, h: 18 },
             { x: 2280, y: groundY - 660, w: 420, h: 18 }
         ];
+        return rawPlats.map(p => ({
+            x: p.x,
+            y: p.y,
+            w: Math.round(p.w * PLATFORM_SCALE),
+            h: Math.round(p.h * PLATFORM_SCALE)
+        }));
     }
 
     const layout = [
@@ -800,14 +809,15 @@ function buildLevelPlatforms(lvl, groundY) {
 
     return layout.map(item => {
         const sp = COSSACK_PLAT_CATALOG[item.specIdx];
-        const drawH = Math.round(item.w * (sp.natH / sp.natW));
+        const scaledW = Math.round(item.w * PLATFORM_SCALE);
+        const drawH = Math.round(scaledW * (sp.natH / sp.natW));
         const walkOffset = drawH * sp.walkRatio;
         const drawTop = item.surfaceY - walkOffset;
         return {
             x: item.x,
             y: item.surfaceY,
-            w: item.w,
-            h: 18,
+            w: scaledW,
+            h: Math.round(18 * PLATFORM_SCALE),
             cossackSpriteKey: sp.key,
             drawTop: drawTop,
             drawH: drawH
@@ -1543,6 +1553,80 @@ function draw() {
     ctx.save();
     ctx.translate(-Math.floor(cameraX), -Math.floor(cameraY));
 
+
+// Хата / будівля — вища за героя (приблизно 1.75x висоти героя)
+function drawHeroScaleHouse(ctx, x, groundY, heroH, era) {
+    const houseH = Math.round(heroH * 1.75);
+    const houseW = Math.round(houseH * 1.15);
+    const wallH = Math.round(houseH * 0.56);
+    const roofH = houseH - wallH;
+    const left = x;
+    const top = groundY - houseH;
+    const wallTop = top + roofH;
+
+    ctx.save();
+    // Тінь під хатою
+    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    ctx.fillRect(left - 4, groundY - 3, houseW + 8, 6);
+
+    // Стіни
+    ctx.fillStyle = era === 0 ? "#f5ebd6" : (era === 1 ? "#e8e4dc" : "#273549");
+    ctx.fillRect(left + 8, wallTop, houseW - 16, wallH);
+    ctx.strokeStyle = "#4a2c11";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(left + 8, wallTop, houseW - 16, wallH);
+
+    // Двері
+    const doorW = Math.max(16, Math.round(houseW * 0.17));
+    const doorH = Math.max(30, Math.round(wallH * 0.62));
+    ctx.fillStyle = "#6d3b1e";
+    ctx.fillRect(left + Math.round(houseW * 0.24), groundY - doorH, doorW, doorH);
+
+    // Вікно
+    const winSize = Math.max(16, Math.round(wallH * 0.28));
+    ctx.fillStyle = era === 2 ? "#38bdf8" : "#87ceeb";
+    ctx.fillRect(left + Math.round(houseW * 0.56), wallTop + Math.round(wallH * 0.22), winSize, winSize);
+    ctx.strokeStyle = "#4a2c11";
+    ctx.strokeRect(left + Math.round(houseW * 0.56), wallTop + Math.round(wallH * 0.22), winSize, winSize);
+
+    // Дах
+    ctx.fillStyle = era === 0 ? "#8b5a2b" : (era === 1 ? "#7c2d12" : "#0ea5e9");
+    ctx.beginPath();
+    ctx.moveTo(left - 6, wallTop + 2);
+    ctx.lineTo(left + houseW / 2, top);
+    ctx.lineTo(left + houseW + 6, wallTop + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#3b1f0e";
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Поле пшениці — приблизно по пояс герою (~0.48 * висоти героя)
+function drawWaistHighWheatField(ctx, startX, endX, groundY, heroH, nowSec) {
+    const stalkH = Math.round(heroH * 0.48);
+    ctx.save();
+    for (let wx = startX; wx < endX; wx += 14) {
+        const sway = Math.sin(nowSec * 1.4 + wx * 0.04) * 5;
+        const tipX = wx + sway;
+        const tipY = groundY - stalkH;
+
+        ctx.strokeStyle = "#d9a726";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(wx, groundY);
+        ctx.quadraticCurveTo(wx + sway * 0.4, groundY - stalkH * 0.55, tipX, tipY);
+        ctx.stroke();
+
+        // Колосся зверху
+        ctx.fillStyle = "#f2c94c";
+        ctx.beginPath();
+        ctx.ellipse(tipX, tipY - 3, 2.8, 6.5, sway * 0.04, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
     // Земля вздовж усього рівня (3400px)
     ctx.fillStyle = "#4b8b3b";
     ctx.fillRect(0, groundY, LEVEL_WIDTH, 12);
@@ -1551,8 +1635,17 @@ function draw() {
     ctx.fillStyle = "#2b190c";
     ctx.fillRect(0, groundY + 36, LEVEL_WIDTH, 120);
 
-    // Маки вздовж землі
+    // Поле пшениці (по пояс герою) та хати (вищі за героя)
     const nowSec = performance.now() * 0.003;
+    const currentHeroH = (player && player.h) ? player.h : BASE_PLAYER_H;
+    drawWaistHighWheatField(ctx, 220, 1180, groundY, currentHeroH, nowSec);
+    drawWaistHighWheatField(ctx, 1650, 2650, groundY, currentHeroH, nowSec);
+
+    const lvlEra = (LEVELS[currentLevelIdx] && typeof LEVELS[currentLevelIdx].era === 'number') ? LEVELS[currentLevelIdx].era : 0;
+    drawHeroScaleHouse(ctx, 1220, groundY, currentHeroH, lvlEra);
+    drawHeroScaleHouse(ctx, 2720, groundY, currentHeroH, lvlEra);
+
+    // Маки вздовж землі
     for (let sx = 40; sx < LEVEL_WIDTH - 100; sx += 180) {
         const sway = Math.sin(nowSec + sx) * 0.14;
         drawPoppy(ctx, sx, groundY, sway);
